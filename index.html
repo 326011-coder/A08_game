@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Puyo Jelly Match - Kawaii Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            /* ゆめかわいいパステルグラデーション */
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 50%, #a1c4fd 100%);
+            color: #4a2333;
+            overflow: hidden; /* Prevent scrolling on mobile */
+            touch-action: none; /* Prevent double-tap zoom etc. */
+        }
+        
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(255, 182, 193, 0.3);
+        }
+
+        /* ふんわり光るテキスト */
+        .glow-text {
+            color: white;
+            text-shadow: 0 0 10px rgba(255, 105, 180, 0.8), 0 0 20px rgba(255, 105, 180, 0.5);
+        }
+
+        /* マカロンのようなボタン */
+        .btn {
+            background: linear-gradient(to bottom, #ffc3a0 0%, #ffafbd 100%);
+            border-bottom: 4px solid #ff8da1;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(255, 105, 180, 0.5);
+            transition: all 0.1s;
+            user-select: none;
+        }
+        .btn:active {
+            transform: translateY(4px);
+            border-bottom: 0px solid #ff8da1;
+            margin-bottom: 4px; /* Maintain layout */
+        }
+        
+        #gameCanvas {
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.8);
+        }
+        
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255, 240, 245, 0.85); /* 薄いピンクの半透明 */
+            backdrop-filter: blur(5px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            border-radius: 16px;
+        }
+        .overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-center p-2">
+
+    <!-- Header / Stats -->
+    <div class="w-full max-w-sm flex justify-between items-end mb-3 px-2">
+        <div>
+            <div class="text-xs text-pink-500 font-bold uppercase tracking-wider">Score</div>
+            <div id="scoreDisplay" class="text-4xl font-black glow-text">0</div>
+        </div>
+        <div class="text-right">
+            <div class="text-xs text-pink-500 font-bold uppercase tracking-wider">Max Chain</div>
+            <div id="chainDisplay" class="text-2xl font-black text-yellow-300" style="text-shadow: 0 2px 4px rgba(0,0,0,0.1);">0</div>
+        </div>
+    </div>
+
+    <!-- Main Game Area -->
+    <div class="flex gap-4 items-start">
+        
+        <!-- Game Board Container -->
+        <div class="glass-panel p-2 relative">
+            <canvas id="gameCanvas" width="216" height="468"></canvas>
+            
+            <!-- Game Over Overlay -->
+            <div id="gameOverScreen" class="overlay">
+                <h2 class="text-4xl font-black text-pink-500 mb-2" style="text-shadow: 0 0 10px white;">GAME OVER</h2>
+                <p class="text-xl mb-6 font-bold text-pink-400">Score: <span id="finalScore" class="text-yellow-400 text-3xl">0</span></p>
+                <button onclick="startGame()" class="btn px-8 py-3 rounded-full text-xl font-bold">Play Again ✨</button>
+            </div>
+            
+            <!-- Pause Overlay -->
+            <div id="pauseScreen" class="overlay">
+                <h2 class="text-4xl font-black text-pink-400 mb-6" style="text-shadow: 0 0 10px white;">PAUSED 💤</h2>
+                <button onclick="togglePause()" class="btn px-8 py-3 rounded-full text-xl font-bold">Resume</button>
+            </div>
+        </div>
+
+        <!-- Next Piece Display -->
+        <div class="flex flex-col gap-4">
+            <div class="glass-panel p-3 flex flex-col items-center">
+                <div class="text-xs text-pink-500 font-bold uppercase tracking-wider mb-2">Next</div>
+                <canvas id="nextCanvas" width="72" height="108" class="bg-white/40 border-2 border-white/60 rounded-xl"></canvas>
+            </div>
+            
+            <button onclick="togglePause()" class="glass-panel px-4 py-3 text-pink-500 font-black hover:bg-white/60 transition text-center mt-auto shadow-sm">
+                PAUSE
+            </button>
+        </div>
+    </div>
+
+    <!-- Mobile Controls -->
+    <div class="w-full max-w-sm mt-6 grid grid-cols-4 gap-3 px-2" id="controls">
+        <button id="btnLeft" class="btn h-14 rounded-2xl flex items-center justify-center text-2xl">⬅️</button>
+        <button id="btnDown" class="btn h-14 rounded-2xl flex items-center justify-center text-2xl">⬇️</button>
+        <button id="btnRight" class="btn h-14 rounded-2xl flex items-center justify-center text-2xl">➡️</button>
+        <button id="btnRotate" class="btn h-14 rounded-2xl flex items-center justify-center text-2xl">🔄</button>
+    </div>
+
+<script>
+/**
+ * Game Configuration & Constants
+ */
+const COLS = 6;
+const ROWS = 13; // 1 hidden row at top for spawning
+const CELL_SIZE = 36;
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const nextCanvas = document.getElementById('nextCanvas');
+const nextCtx = nextCanvas.getContext('2d');
+
+const scoreDisplay = document.getElementById('scoreDisplay');
+const chainDisplay = document.getElementById('chainDisplay');
+const gameOverScreen = document.getElementById('gameOverScreen');
+const finalScore = document.getElementById('finalScore');
+const pauseScreen = document.getElementById('pauseScreen');
+
+// かわいくて明るいパステルカラーパレット
+const COLORS = [
+    null, // 0 is empty
+    { main: '#ff758c', light: '#ff9a9e', shadow: '#d6336c' }, // ピンク (Red代わり)
+    { main: '#6EE7B7', light: '#A7F3D0', shadow: '#059669' }, // ミントグリーン
+    { main: '#93C5FD', light: '#BFDBFE', shadow: '#2563EB' }, // ベビーブルー
+    { main: '#FDE047', light: '#FEF08A', shadow: '#D97706' }, // レモンイエロー
+    { main: '#C084FC', light: '#E9D5FF', shadow: '#7E22CE' }  // ラベンダーパープル
+];
+
+const STATES = {
+    PLAYING: 0,
+    DROP_ANIM: 1, // Gravity settling
+    POP_ANIM: 2,  // Clears exploding
+    GAME_OVER: 3,
+    PAUSED: 4
+};
+
+/**
+ * Game State Variables
+ */
+let board = [];
+let state = STATES.PLAYING;
+let score = 0;
+let chain = 0;
+let maxChain = 0;
+let delayTimer = 0;
+
+let currentPiece = null;
+let nextPiece = null;
+
+let fallCounter = 0;
+let fallSpeed = 60; // Frames per drop step
+let fastDrop = false;
+
+let particles = [];
+let poppingCells = []; // Array of {r, c} currently exploding
+
+// Animation flags
+let gravityDrops = []; // Visual tracking for gravity interpolation
+let floatingTexts = []; // 連鎖のポップアップテキスト用
+
+/**
+ * Piece Class: Represents the falling pair of jellis
+ */
+class Piece {
+    constructor(c1, c2) {
+        this.x = 2; // Col 2 (3rd col)
+        this.y = 0; // Hidden top row
+        // color1 is the pivot (main block), color2 is the attached block
+        this.color1 = c1 || Math.floor(Math.random() * 5) + 1;
+        this.color2 = c2 || Math.floor(Math.random() * 5) + 1;
+        this.rotation = 0; // 0: Up, 1: Right, 2: Down, 3: Left
+    }
+
+    getSubPos(x = this.x, y = this.y, rot = this.rotation) {
+        if (rot === 0) return { x: x, y: y - 1 };     // Up
+        if (rot === 1) return { x: x + 1, y: y };    // Right
+        if (rot === 2) return { x: x, y: y + 1 };    // Down
+        if (rot === 3) return { x: x - 1, y: y };    // Left
+    }
+
+    move(dx, dy) {
+        const nx = this.x + dx;
+        const ny = this.y + dy;
+        const sub = this.getSubPos(nx, ny, this.rotation);
+        
+        if (this.isValid(nx, ny) && this.isValid(sub.x, sub.y)) {
+            this.x = nx;
+            this.y = ny;
+            return true;
+        }
+        return false;
+    }
+
+    rotate() {
+        let nRot = (this.rotation + 1) % 4;
+        let sub = this.getSubPos(this.x, this.y, nRot);
+        
+        // Wall Kick Logic
+        if (!this.isValid(sub.x, sub.y)) {
+            let shiftX = 0, shiftY = 0;
+            if (nRot === 0) shiftY = 1;
+            else if (nRot === 1) shiftX = -1;
+            else if (nRot === 2) shiftY = -1;
+            else if (nRot === 3) shiftX = 1;
+
+            let nx = this.x + shiftX;
+            let ny = this.y + shiftY;
+            let nSub = this.getSubPos(nx, ny, nRot);
+
+            if (this.isValid(nx, ny) && this.isValid(nSub.x, nSub.y)) {
+                this.x = nx;
+                this.y = ny;
+                this.rotation = nRot;
+                return;
+            }
+            
+            if (shiftX !== 0) {
+                 nx = this.x + (shiftX * 2);
+                 nSub = this.getSubPos(nx, ny, nRot);
+                 if (this.isValid(nx, ny) && this.isValid(nSub.x, nSub.y)) {
+                    this.x = nx;
+                    this.y = ny;
+                    this.rotation = nRot;
+                    return;
+                }
+            }
+            return;
+        }
+        this.rotation = nRot;
+    }
+
+    isValid(x, y) {
+        if (x < 0 || x >= COLS || y >= ROWS) return false;
+        if (y >= 0 && board[y][x] !== 0) return false;
+        return true;
+    }
+
+    lock() {
+        if (this.y >= 0) board[this.y][this.x] = this.color1;
+        let sub = this.getSubPos();
+        if (sub.y >= 0) board[sub.y][sub.x] = this.color2;
+    }
+}
+
+/**
+ * Game Logic Functions
+ */
+function initBoard() {
+    board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+}
+
+function startGame() {
+    initBoard();
+    score = 0;
+    chain = 0;
+    maxChain = 0;
+    fallSpeed = 60;
+    particles = [];
+    floatingTexts = [];
+    updateDisplays();
+    gameOverScreen.classList.remove('active');
+    pauseScreen.classList.remove('active');
+    
+    currentPiece = new Piece();
+    nextPiece = new Piece();
+    state = STATES.PLAYING;
+    drawNext();
+}
+
+function spawnPiece() {
+    currentPiece = nextPiece;
+    nextPiece = new Piece();
+    drawNext();
+    
+    if (!currentPiece.isValid(currentPiece.x, currentPiece.y) || 
+        !currentPiece.isValid(currentPiece.getSubPos().x, currentPiece.getSubPos().y)) {
+        state = STATES.GAME_OVER;
+        finalScore.innerText = score;
+        gameOverScreen.classList.add('active');
+    }
+}
+
+function applyGravity() {
+    let moved = false;
+    gravityDrops = [];
+
+    for (let c = 0; c < COLS; c++) {
+        let writeR = ROWS - 1;
+        for (let r = ROWS - 1; r >= 0; r--) {
+            if (board[r][c] !== 0) {
+                if (writeR !== r) {
+                    board[writeR][c] = board[r][c];
+                    board[r][c] = 0;
+                    moved = true;
+                    gravityDrops.push({ x: c, startY: r, endY: writeR, color: board[writeR][c] });
+                }
+                writeR--;
+            }
+        }
+    }
+    return moved;
+}
+
+function findMatches() {
+    let visited = Array(ROWS).fill().map(() => Array(COLS).fill(false));
+    let matchedCells = [];
+    let matchGroups = 0;
+
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            if (board[r][c] !== 0 && !visited[r][c]) {
+                let color = board[r][c];
+                let group = [];
+                let queue = [{r, c}];
+                visited[r][c] = true;
+
+                while (queue.length > 0) {
+                    let curr = queue.shift();
+                    group.push(curr);
+
+                    const dirs = [[-1,0], [1,0], [0,-1], [0,1]];
+                    for (let d of dirs) {
+                        let nr = curr.r + d[0];
+                        let nc = curr.c + d[1];
+                        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+                            if (board[nr][nc] === color && !visited[nr][nc]) {
+                                visited[nr][nc] = true;
+                                queue.push({r: nr, c: nc});
+                            }
+                        }
+                    }
+                }
+
+                if (group.length >= 4) {
+                    matchedCells = matchedCells.concat(group);
+                    matchGroups++;
+                }
+            }
+        }
+    }
+    return { cells: matchedCells, groups: matchGroups };
+}
+
+function updateDisplays() {
+    scoreDisplay.innerText = score;
+    chainDisplay.innerText = maxChain;
+}
+
+// きらきらパーティクル生成
+function createParticles(x, y, colorData) {
+    for(let i=0; i<12; i++) {
+        particles.push({
+            x: x * CELL_SIZE + CELL_SIZE/2,
+            y: (y-1) * CELL_SIZE + CELL_SIZE/2,
+            vx: (Math.random() - 0.5) * 12,
+            vy: (Math.random() - 0.5) * 12,
+            life: 1.0,
+            color: colorData.light
+        });
+    }
+}
+
+/**
+ * Main Update Loop
+ */
+function update() {
+    if (state === STATES.PAUSED || state === STATES.GAME_OVER) return;
+
+    // Handle Particle Lifetimes
+    particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.04;
+    });
+    particles = particles.filter(p => p.life > 0);
+
+    // Handle Floating Texts
+    floatingTexts.forEach(ft => {
+        ft.y -= 0.8;
+        ft.life -= 0.02;
+    });
+    floatingTexts = floatingTexts.filter(ft => ft.life > 0);
+
+    if (state === STATES.PLAYING) {
+        fallCounter++;
+        let threshold = fastDrop ? 2 : fallSpeed;
+        
+        if (fallCounter >= threshold) {
+            fallCounter = 0;
+            if (!currentPiece.move(0, 1)) {
+                currentPiece.lock();
+                state = STATES.DROP_ANIM;
+                delayTimer = 15;
+                fastDrop = false;
+            } else if (fastDrop) {
+                score += 1;
+                updateDisplays();
+            }
+        }
+    } 
+    else if (state === STATES.DROP_ANIM) {
+        delayTimer--;
+        if (delayTimer <= 0) {
+            let moved = applyGravity();
+            if (moved) {
+                delayTimer = 15;
+            } else {
+                let matches = findMatches();
+                if (matches.cells.length > 0) {
+                    poppingCells = matches.cells;
+                    chain++;
+                    if(chain > maxChain) maxChain = chain;
+                    
+                    let chainMult = chain > 1 ? Math.pow(2, chain) : 1;
+                    score += (matches.cells.length * 10) * chainMult;
+                    updateDisplays();
+                    
+                    let centerX = 0, centerY = 0;
+                    poppingCells.forEach(cell => {
+                        createParticles(cell.c, cell.r, COLORS[board[cell.r][cell.c]]);
+                        centerX += cell.c * CELL_SIZE;
+                        centerY += (cell.r - 1) * CELL_SIZE;
+                    });
+                    
+                    // 連鎖テキストをポップアップ
+                    centerX /= poppingCells.length;
+                    centerY /= poppingCells.length;
+                    floatingTexts.push({
+                        x: centerX + CELL_SIZE/2,
+                        y: centerY,
+                        text: chain + "れんさ♪",
+                        life: 1.5,
+                        color: COLORS[board[poppingCells[0].r][poppingCells[0].c]].main
+                    });
+
+                    state = STATES.POP_ANIM;
+                    delayTimer = 20;
+                } else {
+                    chain = 0;
+                    spawnPiece();
+                    state = STATES.PLAYING;
+                }
+            }
+        }
+    }
+    else if (state === STATES.POP_ANIM) {
+        delayTimer--;
+        if (delayTimer <= 0) {
+            poppingCells.forEach(cell => {
+                board[cell.r][cell.c] = 0;
+            });
+            poppingCells = [];
+            state = STATES.DROP_ANIM;
+            delayTimer = 5;
+        }
+    }
+}
+
+/**
+ * Rendering
+ */
+function drawJelly(context, x, y, colorData, size, alpha=1.0) {
+    if (!colorData) return;
+    
+    context.save();
+    context.globalAlpha = alpha;
+    let centerX = x + size/2;
+    let centerY = y + size/2;
+    let radius = size/2 - 2;
+
+    // シャドウ
+    context.beginPath();
+    context.arc(centerX, centerY + 2, radius, 0, Math.PI * 2);
+    context.fillStyle = 'rgba(0,0,0,0.1)';
+    context.fill();
+
+    // ぷるぷるゼリーボディ (やさしいグラデーション)
+    context.beginPath();
+    context.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    let grad = context.createRadialGradient(
+        centerX - radius/3, centerY - radius/3, radius/10,
+        centerX, centerY, radius
+    );
+    grad.addColorStop(0, colorData.light);
+    grad.addColorStop(0.6, colorData.main);
+    grad.addColorStop(1, colorData.shadow);
+    context.fillStyle = grad;
+    context.fill();
+
+    // --- ここからかわいい顔の描画 ---
+    
+    // キラキラおめめ (白目)
+    context.fillStyle = 'white';
+    context.beginPath(); context.arc(centerX - radius/3, centerY - radius/8, radius/3.5, 0, Math.PI*2); context.fill();
+    context.beginPath(); context.arc(centerX + radius/3, centerY - radius/8, radius/3.5, 0, Math.PI*2); context.fill();
+    
+    // 瞳 (焦げ茶色で柔らかい印象に)
+    context.fillStyle = '#4a2333';
+    context.beginPath(); context.arc(centerX - radius/3, centerY - radius/8, radius/5, 0, Math.PI*2); context.fill();
+    context.beginPath(); context.arc(centerX + radius/3, centerY - radius/8, radius/5, 0, Math.PI*2); context.fill();
+    
+    // ハイライト (おめめのキラキラ)
+    context.fillStyle = 'white';
+    context.beginPath(); context.arc(centerX - radius/3 - radius/15, centerY - radius/6, radius/15, 0, Math.PI*2); context.fill();
+    context.beginPath(); context.arc(centerX + radius/3 - radius/15, centerY - radius/6, radius/15, 0, Math.PI*2); context.fill();
+
+    // チーク (ピンク色)
+    context.fillStyle = 'rgba(255, 105, 180, 0.45)';
+    context.beginPath(); context.ellipse(centerX - radius/2, centerY + radius/6, radius/5, radius/10, 0, 0, Math.PI*2); context.fill();
+    context.beginPath(); context.ellipse(centerX + radius/2, centerY + radius/6, radius/5, radius/10, 0, 0, Math.PI*2); context.fill();
+
+    // にっこりお口
+    context.strokeStyle = '#4a2333';
+    context.lineWidth = 1.2;
+    context.beginPath();
+    context.arc(centerX, centerY + radius/8, radius/6, 0.2, Math.PI - 0.2);
+    context.stroke();
+    
+    // ゼリー全体のツヤ感
+    context.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    context.beginPath();
+    context.ellipse(centerX - radius/2, centerY - radius/2, radius/3, radius/6, Math.PI/4, 0, Math.PI*2);
+    context.fill();
+
+    context.restore();
+}
+
+function drawNext() {
+    nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+    if (!nextPiece) return;
+    drawJelly(nextCtx, 18, 54, COLORS[nextPiece.color1], 36);
+    drawJelly(nextCtx, 18, 18, COLORS[nextPiece.color2], 36);
+}
+
+function drawBoard() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // グリッド線 (ピンク系の薄い色)
+    ctx.strokeStyle = 'rgba(255, 105, 180, 0.15)';
+    ctx.lineWidth = 1;
+    for(let i=0; i<=COLS; i++) {
+        ctx.beginPath(); ctx.moveTo(i*CELL_SIZE, 0); ctx.lineTo(i*CELL_SIZE, canvas.height); ctx.stroke();
+    }
+    for(let i=0; i<ROWS-1; i++) {
+        ctx.beginPath(); ctx.moveTo(0, i*CELL_SIZE); ctx.lineTo(canvas.width, i*CELL_SIZE); ctx.stroke();
+    }
+
+    for (let r = 1; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            if (board[r][c] !== 0) {
+                let isPopping = poppingCells.some(cell => cell.r === r && cell.c === c);
+                let alpha = 1.0;
+                if (isPopping) {
+                    alpha = (Math.floor(Date.now() / 60) % 2 === 0) ? 0.3 : 1.0;
+                }
+                drawJelly(ctx, c * CELL_SIZE, (r - 1) * CELL_SIZE, COLORS[board[r][c]], CELL_SIZE, alpha);
+            }
+        }
+    }
+
+    if (state === STATES.PLAYING && currentPiece) {
+        if (currentPiece.y >= 1) {
+            drawJelly(ctx, currentPiece.x * CELL_SIZE, (currentPiece.y - 1) * CELL_SIZE, COLORS[currentPiece.color1], CELL_SIZE);
+        }
+        let sub = currentPiece.getSubPos();
+        if (sub.y >= 1) {
+            drawJelly(ctx, sub.x * CELL_SIZE, (sub.y - 1) * CELL_SIZE, COLORS[currentPiece.color2], CELL_SIZE);
+        }
+    }
+
+    // パーティクル (星や泡のような丸)
+    particles.forEach(p => {
+        ctx.save();
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4 * p.life, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    });
+
+    // 連鎖テキストの描画
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = '900 22px Nunito';
+    floatingTexts.forEach(ft => {
+        ctx.globalAlpha = Math.min(1, ft.life * 2);
+        // 白いフチ取り
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 4;
+        ctx.strokeText(ft.text, ft.x, ft.y);
+        // テキストのメインカラー
+        ctx.fillStyle = ft.color;
+        ctx.fillText(ft.text, ft.x, ft.y);
+    });
+    ctx.restore();
+
+    if(fallSpeed < 60) {
+        fallSpeed += 0.001; 
+    }
+}
+
+function gameLoop() {
+    update();
+    drawBoard();
+    requestAnimationFrame(gameLoop);
+}
+
+/**
+ * Controls & Input Handling
+ */
+function handleInput(action) {
+    if (state !== STATES.PLAYING) return;
+    
+    switch(action) {
+        case 'LEFT':
+            currentPiece.move(-1, 0);
+            break;
+        case 'RIGHT':
+            currentPiece.move(1, 0);
+            break;
+        case 'DOWN_START':
+            fastDrop = true;
+            break;
+        case 'DOWN_END':
+            fastDrop = false;
+            break;
+        case 'ROTATE':
+            currentPiece.rotate();
+            break;
+    }
+}
+
+// Keyboard Listeners
+document.addEventListener('keydown', (e) => {
+    switch(e.code) {
+        case 'ArrowLeft': handleInput('LEFT'); break;
+        case 'ArrowRight': handleInput('RIGHT'); break;
+        case 'ArrowDown': handleInput('DOWN_START'); break;
+        case 'ArrowUp': 
+        case 'Space':
+        case 'KeyZ':
+        case 'KeyX': handleInput('ROTATE'); break;
+        case 'KeyP':
+        case 'Escape': togglePause(); break;
+    }
+});
+document.addEventListener('keyup', (e) => {
+    if (e.code === 'ArrowDown') handleInput('DOWN_END');
+});
+
+// Mobile / Button Listeners
+function bindBtn(id, action) {
+    const btn = document.getElementById(id);
+    btn.addEventListener('touchstart', (e) => { e.preventDefault(); handleInput(action); });
+    btn.addEventListener('mousedown', (e) => { e.preventDefault(); handleInput(action); });
+    
+    if(action === 'DOWN_START') {
+        btn.addEventListener('touchend', (e) => { e.preventDefault(); handleInput('DOWN_END'); });
+        btn.addEventListener('mouseup', (e) => { e.preventDefault(); handleInput('DOWN_END'); });
+        btn.addEventListener('mouseleave', (e) => { e.preventDefault(); handleInput('DOWN_END'); });
+    }
+}
+
+bindBtn('btnLeft', 'LEFT');
+bindBtn('btnRight', 'RIGHT');
+bindBtn('btnDown', 'DOWN_START');
+bindBtn('btnRotate', 'ROTATE');
+
+function togglePause() {
+    if (state === STATES.GAME_OVER) return;
+    
+    if (state === STATES.PAUSED) {
+        state = STATES.PLAYING;
+        pauseScreen.classList.remove('active');
+    } else {
+        state = STATES.PAUSED;
+        pauseScreen.classList.add('active');
+    }
+}
+
+document.getElementById('controls').addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('touchmove', e => { if(e.target.tagName !== 'BUTTON') e.preventDefault(); }, {passive: false});
+
+// Start Game
+startGame();
+requestAnimationFrame(gameLoop);
+
+</script>
+</body>
+</html>
